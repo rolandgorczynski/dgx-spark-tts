@@ -87,6 +87,34 @@ _lock = threading.Lock()
 _pcm_override = None
 
 
+class _PassthroughWatermarker:
+    """Identity stand-in for Perth's implicit watermarker.
+
+    Chatterbox calls ``perth.PerthImplicitWatermarker()`` with no skip flag.
+    resemble-perth sets that name to ``None`` when the implicit watermarker
+    (or a native dependency) fails to import, which is the aarch64 / GB10
+    failure mode. Synthesis still needs ``apply_watermark`` to return audio.
+    """
+
+    def apply_watermark(self, wav, sample_rate=None, **_kwargs):
+        return wav
+
+
+def _ensure_perth_watermarker() -> None:
+    """Install a passthrough if Perth's watermarker class did not import."""
+    import perth
+
+    watermarker = getattr(perth, "PerthImplicitWatermarker", None)
+    if callable(watermarker):
+        return
+    log.warning(
+        "PerthImplicitWatermarker is not callable (%r); "
+        "TTS will run without an audio watermark",
+        watermarker,
+    )
+    perth.PerthImplicitWatermarker = _PassthroughWatermarker
+
+
 def _skip_model() -> bool:
     return os.environ.get("TTS_SKIP_MODEL", "").lower() in {"1", "true", "yes"}
 
@@ -114,6 +142,9 @@ def load_model():
     else:
         raise SystemExit(CUDA_MESSAGE)
 
+    # Must run after perth is importable and before Chatterbox constructs
+    # the watermarker inside from_pretrained. Upstream has no disable flag.
+    _ensure_perth_watermarker()
     _model = ChatterboxMultilingualTTS.from_pretrained(_device, t3_model=T3_MODEL)
     return _model
 
