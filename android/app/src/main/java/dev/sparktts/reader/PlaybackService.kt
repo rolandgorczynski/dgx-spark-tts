@@ -17,11 +17,12 @@ class PlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
-        val exoPlayer = ExoPlayer.Builder(this)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(TtsDataSource.Factory()))
+        val mediaSourceFactory = DefaultMediaSourceFactory(TtsDataSource.Factory())
             .setLoadErrorHandlingPolicy(object : DefaultLoadErrorHandlingPolicy() {
                 override fun getMinimumLoadableRetryCount(dataType: Int): Int = 0
             })
+        val exoPlayer = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(mediaSourceFactory)
             .build()
         exoPlayer.setAudioAttributes(
             AudioAttributes.Builder()

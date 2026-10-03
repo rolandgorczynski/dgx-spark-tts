@@ -1,7 +1,6 @@
 package dev.sparktts.reader
 
 import org.json.JSONObject
-import java.net.URI
 
 object SparkEndpoint {
     const val DEFAULT_BASE_URL = "http://SPARK_LAN_IP:8004"
@@ -12,8 +11,17 @@ object SparkEndpoint {
         if (!value.startsWith("http://") && !value.startsWith("https://")) {
             value = "http://$value"
         }
-        val host = URI(value).host
-        if (host.isNullOrBlank()) throw IllegalArgumentException("Spark-Adresse ist ungültig")
+        // java.net.URI.host is null for underscores, so the placeholder
+        // SPARK_LAN_IP cannot be validated that way.
+        val authority = value.substringAfter("://", "").substringBefore("/").substringBefore("?")
+        val host = if (authority.startsWith("[")) {
+            authority.substringAfter("[").substringBefore("]")
+        } else {
+            authority.substringBefore(":")
+        }
+        if (host.isBlank() || !host.any { it.isLetterOrDigit() }) {
+            throw IllegalArgumentException("Spark-Adresse ist ungültig")
+        }
         return value
     }
 
