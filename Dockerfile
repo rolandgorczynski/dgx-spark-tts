@@ -52,9 +52,12 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip \
         torchaudio==2.10.0+cu130 \
     && python3 -c "import torch; v=torch.__version__; c=torch.version.cuda or ''; assert v.startswith('2.10.0'), v; assert c.startswith('13'), (v, c); import chatterbox.mtl_tts; print('torch', v, 'cuda', c)"
 
-COPY server.py /app/server.py
+COPY server.py tts_audio.py /app/
 
 RUN mkdir -p /models/huggingface /voices
+
+# Progressive playback uses libopus inside the distro ffmpeg package.
+RUN ffmpeg -hide_banner -encoders 2>/dev/null | grep -q libopus
 
 EXPOSE 8004
 

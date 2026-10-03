@@ -4,3 +4,6 @@
 .env
 outputs
 *.wav
+android
+tests
+**/.pytest_cache
