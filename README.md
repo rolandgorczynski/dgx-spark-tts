@@ -46,6 +46,8 @@ curl -sf http://127.0.0.1:8004/health
 `status` muss `ok` sein und `cuda` `true`. Ohne sichtbare GPU beendet sich der Prozess (kein stiller CPU-Fallback). `TTS_ALLOW_CPU=1` nur für einen langsamen Probelauf. Cache liegt im Volume `hf_cache`,
 ein zweiter Start lädt nicht neu.
 
+Auf dem GB10 (aarch64) kann `resemble-perth` die Klasse `PerthImplicitWatermarker` auf `None` lassen, weil die native Erweiterung nicht lädt. Chatterbox ruft sie trotzdem auf und der Start starb bisher mit `TypeError: 'NoneType' object is not callable` in `load_model`. Dieser Stand setzt vorher einen Durchreich-Watermarker: der Container startet, die Synthese liefert Audio, nur ohne Perth-Wasserzeichen. In den Logs steht dann eine Warnung, kein Abbruch.
+
 Die Spark-IP für das Telefon:
 
 ```bash
@@ -181,7 +183,7 @@ mehr als genug. FP32, kein BF16, Qualität vor Tempo.
   allgemeinen Mehrsprachmodell.
 - Der offizielle Loader paart T3-V3 mit `s3gen.pt`, nicht mit der separat
   liegenden Datei `s3gen_v3.pt`. Dieser Stack folgt dem offiziellen Loader.
-- Ausgaben sind mit Perth-Watermark versehen (kaum hörbar, kein Lizenzverbot).
+- Läuft Perths impliziter Watermarker, bleiben die Ausgaben mit einem kaum hörbaren Wasserzeichen versehen (kein Lizenzverbot). Auf dem Spark fällt der Import oft aus; dann ist das Audio ohne Wasserzeichen, siehe den Hinweis oben beim Start.
 - Ein Aufruf im Modell endet bei 1000 Speech-Tokens (grob 40 Sekunden).
   Längerer Text wird bei ~400 Zeichen an Satzgrenzen geschnitten (`TTS_CHUNK_CHARS`).
   Der erste Satz eines Streams ist davon ausgenommen, damit früher Audio kommt.
@@ -190,8 +192,7 @@ mehr als genug. FP32, kein BF16, Qualität vor Tempo.
   leicht verändern.
 - `zh`/`ja`-Hilfsbibliotheken (pkuseg, pykakasi) sind nicht installiert.
   Deutsch und Polnisch brauchen sie nicht.
-- Wenn `torch.cuda.get_arch_list()` kein `sm_121` enthält, bricht die Inferenz
-  mit „no kernel image“ ab. Dann ist das falsche Torch-Wheel im Image.
+- PyTorch 2.10+cu130 warnt auf dem GB10: `Found GPU0 NVIDIA GB10 which is of cuda capability 12.1` und nennt als Maximum 12.0. Das ist erwartet. Das Wheel bringt sm_120-Kernel mit, die auf sm_121 laufen. `torch.cuda.get_arch_list()` muss dafür kein `sm_121` enthalten, und die Warnung ist kein Grund, Torch neu zu bauen. Bricht die Inferenz mit „no kernel image“ ab, liegt das falsche Wheel im Image (CPU-Build oder ein Torch ohne sm_120).
 
 ```bash
 docker compose exec tts python3 -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.get_arch_list(), torch.cuda.get_device_name(0))"

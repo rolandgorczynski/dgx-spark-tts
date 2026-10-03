@@ -14,6 +14,11 @@ transformers==5.2.0
 diffusers==0.29.0
 conformer==0.3.2
 safetensors==0.5.3
+# Latest PyPI release. On aarch64 / GB10 the implicit watermarker often
+# imports as None (native extension or pkg_resources failure). Keep the
+# dependency — chatterbox imports perth — and let server.py substitute a
+# passthrough. Do not pull Perth from git here: its pyproject pins torch
+# and several native extras that fight the cu130 wheel install below.
 resemble-perth==1.0.1
 omegaconf==2.3.0
 einops>=0.7.0
