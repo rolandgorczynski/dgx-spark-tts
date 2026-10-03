@@ -1,0 +1,6 @@
+# Tests do not load Chatterbox or CUDA. The Docker image uses requirements.txt.
+pytest>=8
+httpx>=0.27
+fastapi>=0.115.0,<1
+uvicorn>=0.32.0
+numpy>=1.24.0,<2

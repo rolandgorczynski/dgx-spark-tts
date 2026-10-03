@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Spark Vorlesen</string>
+    <string name="base_url_label">Spark-Adresse</string>
+    <string name="base_url_hint">z. B. http://192.168.1.20:8004</string>
+    <string name="token_label">Token (optional)</string>
+    <string name="token_hint">Nur wenn TTS_API_TOKEN gesetzt ist</string>
+    <string name="language_label">Sprache</string>
+    <string name="lang_de">Deutsch</string>
+    <string name="lang_pl">Polski</string>
+    <string name="voice_label">Stimme</string>
+    <string name="refresh_voices">Stimmen laden</string>
+    <string name="speed_label">Tempo</string>
+    <string name="text_hint">Text zum Vorlesen</string>
+    <string name="play">Abspielen</string>
+    <string name="pause">Pause</string>
+    <string name="stop">Stopp</string>
+    <string name="save">Speichern</string>
+    <string name="status_idle">Teilen aus X oder Text einfügen.</string>
+</resources>

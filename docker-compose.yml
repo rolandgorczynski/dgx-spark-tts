@@ -16,6 +16,7 @@ services:
       CHATTERBOX_T3_MODEL: ${CHATTERBOX_T3_MODEL:-v3}
       TTS_LANGUAGE: ${TTS_LANGUAGE:-de}
       TTS_CHUNK_CHARS: ${TTS_CHUNK_CHARS:-400}
+      TTS_API_TOKEN: ${TTS_API_TOKEN:-}
       HF_HOME: /models/huggingface
       HF_HUB_DISABLE_XET: "1"
       HF_TOKEN: ${HF_TOKEN:-}

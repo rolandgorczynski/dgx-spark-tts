@@ -43,3 +43,12 @@ outputs/
 # Docker / local junk
 *.log
 .DS_Store
+
+# Android
+android/.gradle/
+android/**/build/
+android/local.properties
+android/.idea/
+android/captures/
+android/**/*.apk
+*.iml

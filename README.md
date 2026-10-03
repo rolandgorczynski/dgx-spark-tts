@@ -1,8 +1,12 @@
 # Lokales TTS auf dem DGX Spark
 
 Chatterbox Multilingual **V3** (Resemble AI, 0,5B, **MIT**) als HTTP-API.
-Deutsch und Polnisch sind beide in der offiziellen 23-Sprachen-Liste
-(`de`, `pl`), nicht als Nachgedanke. Kein Cloud-TTS, kein Ollama, keine Android-App.
+Deutsch und Polnisch stehen beide in der offiziellen 23-Sprachen-Liste
+(`de`, `pl`). Kein Cloud-TTS, kein Ollama.
+
+Die Android-App unter `android/` nimmt Text per Teilen (X, Browser, Artikel)
+und spielt **Ogg Opus** ab, sobald der erste Satz fertig ist. Die Stimme
+kommt vom Spark, nicht von einer Datei auf dem Telefon.
 
 Der Container wird **auf dem Spark gebaut**. Es gibt kein fertiges Hub-Image.
 Basis `nvidia/cuda:13.0.3-runtime-ubuntu22.04` (linux/arm64, SBSA, passend zu Grace)
@@ -18,6 +22,7 @@ Dieser Stack wurde hier **nicht** auf einem DGX Spark ausgeführt.
 - NVIDIA Container Toolkit (`nvidia-ctk runtime configure --runtime=docker`, danach Docker neu starten).
 - Internet für den einmaligen Image-Build und den Modell-Download.
 - Optional: `cp .env.example .env` (kein Secret nötig; `HF_TOKEN` leer lassen).
+- Telefon und Spark im selben LAN, Port **8004** vom Telefon erreichbar.
 
 ## Start
 
@@ -41,6 +46,15 @@ curl -sf http://127.0.0.1:8004/health
 `status` muss `ok` sein und `cuda` `true`. Ohne sichtbare GPU beendet sich der Prozess (kein stiller CPU-Fallback). `TTS_ALLOW_CPU=1` nur für einen langsamen Probelauf. Cache liegt im Volume `hf_cache`,
 ein zweiter Start lädt nicht neu.
 
+Die Spark-IP für das Telefon:
+
+```bash
+ip -4 addr show | awk '/inet / && $2 !~ /^127\./ {print $2}'
+```
+
+In der App die Adresse eintragen, zum Beispiel `http://192.168.1.20:8004`.
+Wenn `ufw` aktiv ist: `sudo ufw allow 8004/tcp`.
+
 ## Test (auf dem Spark)
 
 Deutsch, ganze WAV-Datei:
@@ -63,33 +77,95 @@ curl -sS -X POST http://127.0.0.1:8004/v1/audio/speech \
 
 Dieselbe Route heißt auch `POST /tts` und akzeptiert `text` statt `input`.
 
-Langer Text als WAV-Stream (satzweise, nicht tokenweise). `curl -N` schreibt,
-sobald der erste Satz fertig ist. Der WAV-Header trägt eine Platzhalterlänge
-(`0x7FFFFF00`); zum Abspielen die Datei nach Ende des Requests öffnen.
-Kurze Sätze haben davon keinen Vorteil.
+## Stream (sofort hörbar)
+
+Langer Text wird an Satzgrenzen und Zeilenumbrüchen geschnitten. Der **erste
+Satz** geht allein ins Modell, der Rest in Stücken bis `TTS_CHUNK_CHARS`
+(Standard 400). Das Modell selbst erzeugt keinen Token-Stream.
+
+Für Abspieler: `stream: true` und `response_format: "ogg"`. Das ist **Ogg Opus**
+über chunked HTTP, ohne `Content-Length`. ExoPlayer behandelt den Strom als
+nicht spulbar und beginnt mit den ersten Ogg-Seiten, während die nächsten Sätze
+noch laufen. `ffmpeg` (`libopus`, `atempo`) sitzt schon im Image.
 
 ```bash
 curl -N -sS -X POST http://127.0.0.1:8004/v1/audio/speech \
   -H 'Content-Type: application/json' \
-  -d '{"input":"Erster Satz. Zweiter Satz kommt danach.","language":"de","stream":true}' \
-  --output de-stream.wav
+  -d '{"input":"Erster Satz. Zweiter Satz kommt danach.","language":"de","stream":true,"response_format":"ogg"}' \
+  --output de-stream.ogg
 ```
 
-MP3 nur ohne Stream: `"response_format":"mp3"`.
-Sprachen: `GET /v1/languages`. OpenAPI: `http://127.0.0.1:8004/docs`.
+`curl -N` schreibt, sobald der erste Satz kodiert ist. Ein einzelner kurzer Satz
+hat davon keinen Vorteil.
 
-## Sprache und Stimme
+`stream: true` mit `response_format: "wav"` bleibt für `curl` erhalten. Der
+WAV-Header trägt eine Platzhalterlänge (`0x7FFFFF00`), weil die echte Länge
+erst am Ende feststeht. Media3 liest diese Länge als Dateiende (mehrere
+Stunden) und sucht nicht sauber bis zum Socket-Ende. Die App nutzt deshalb Ogg,
+nicht WAV. MP3 gibt es nur ohne Stream.
+
+Antwort-Header beim Stream: `Cache-Control: no-store`, `Accept-Ranges: none`,
+`X-Accel-Buffering: no` (kein Puffer, falls später ein Reverse-Proxy davor steht).
+
+## Sprache, Stimme, Tempo
 
 | Feld | Bedeutung |
 | --- | --- |
 | `language` | `de` oder `pl` (auch `en` und 20 weitere). Fehlt das Feld, gilt `TTS_LANGUAGE` (Standard `de`). |
-| `voice` | weglassen oder `builtin`: eingebaute Stimme aus `conds.pt`. |
+| `voice` | `builtin` oder der Dateiname aus `GET /v1/voices`. |
+| `speed` | `0.5`–`2.0`, Standard `1.0`. |
 
-Die eingebaute Stimme ist der Default des Modells, kein deutscher oder polnischer Sprecher.
-Für einen muttersprachlichen Klang eine kurze, saubere Referenz (wenige Sekunden, WAV/MP3/FLAC)
-nach `./voices/` legen und `"voice":"dateiname.wav"` schicken. Nur der Dateiname, kein Pfad.
+`GET /v1/languages` listet die Sprachen. `GET /v1/voices` liefert die eingebaute
+Stimme plus Dateien in `./voices` (wav, mp3, flac, ogg):
 
+```json
+{"voices":[{"id":"builtin","name":"Eingebaut","builtin":true},{"id":"anna.wav","name":"anna","builtin":false}]}
+```
+
+Die eingebaute Stimme ist der Default des Modells (`conds.pt`), kein eigener
+deutscher oder polnischer Sprecher. Für einen muttersprachlichen Klang eine
+kurze, saubere Referenz (wenige Sekunden) nach `./voices/` legen. Die App lädt
+die Liste selbst. Nichts aufs Telefon kopieren. Nur der Dateiname, kein Pfad.
+
+`generate()` hat **kein** Sprechtempo. `cfg_weight` verschiebt die Prosodie und
+ist kein Tempo-Regler; der Default `0.5` bleibt. `speed` streckt die PCM-Daten
+mit ffmpeg `atempo` (Tonhöhe bleibt). `1.0` lässt die Samples unverändert.
 Weitere Felder: `exaggeration` (0.5), `cfg_weight` (0.5), `temperature` (0.8), `seed`.
+
+OpenAPI: `http://127.0.0.1:8004/docs`.
+
+## Optionaler LAN-Token
+
+`TTS_API_TOKEN` in `.env`. Leer lassen, dann ist die API offen.
+
+```bash
+curl -sS http://127.0.0.1:8004/v1/voices -H 'Authorization: Bearer geheim'
+```
+
+Dasselbe gilt für `X-API-Key`. `GET /health` bleibt ohne Token, damit der
+Docker-Healthcheck nicht scheitert. In der App das Feld „Token“ füllen.
+
+## Android
+
+Ordner `android/` in Android Studio öffnen (JDK 17, Android SDK 35) und auf
+dem Gerät starten. Oder Debug-APK ohne Play Store:
+
+```bash
+cd android
+./gradlew :app:assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+Ablauf:
+
+1. App öffnen, Spark-Adresse auf `http://<spark-ip>:8004` setzen (Vorgabe im Feld: `http://SPARK_LAN_IP:8004`). Optional den Token eintragen.
+2. „Stimmen laden“. Deutsch oder Polski wählen, Stimme und Tempo einstellen.
+3. In X (oder einer anderen App) **Teilen → Spark Vorlesen**. Enthält die Freigabe schon den Text, startet die Wiedergabe. Kommt nur ein Link, holt die App den Text (bei X über oEmbed, sonst aus dem HTML). Klappt das nicht, bleibt das Feld zum Einfügen offen.
+4. Abspielen / Pause / Stopp. Die Wiedergabe läuft im Player-Dienst weiter, wenn du zu X zurückgehst. Die Benachrichtigung braucht die Mitteilungs-Erlaubnis.
+5. „Speichern“ ist nur der Nebenweg: eine ganze WAV, danach die Teilen-Ansicht. Der normale Weg schreibt keine Datei.
+
+Klartext-HTTP ist erlaubt, weil der Spark im LAN kein TLS spricht. Tempo gilt
+beim nächsten Start, nicht mitten in einem laufenden Stück.
 
 ## Speicher
 
@@ -108,8 +184,10 @@ mehr als genug. FP32, kein BF16, Qualität vor Tempo.
 - Ausgaben sind mit Perth-Watermark versehen (kaum hörbar, kein Lizenzverbot).
 - Ein Aufruf im Modell endet bei 1000 Speech-Tokens (grob 40 Sekunden).
   Längerer Text wird bei ~400 Zeichen an Satzgrenzen geschnitten (`TTS_CHUNK_CHARS`).
-- Stream ist satzweise WAV. An den Schnitten kann ein kleiner Knackser bleiben.
-  Ohne `stream` werden die Stücke mit 20 ms Crossfade zusammengehängt.
+  Der erste Satz eines Streams ist davon ausgenommen, damit früher Audio kommt.
+- An den Schnitten bleibt ohne Crossfade ein kleiner Knackser möglich. Der Server
+  mischt 20 ms über. `speed` ungleich 1.0 kommt obendrauf und kann die Übergänge
+  leicht verändern.
 - `zh`/`ja`-Hilfsbibliotheken (pkuseg, pykakasi) sind nicht installiert.
   Deutsch und Polnisch brauchen sie nicht.
 - Wenn `torch.cuda.get_arch_list()` kein `sm_121` enthält, bricht die Inferenz
@@ -118,6 +196,16 @@ mehr als genug. FP32, kein BF16, Qualität vor Tempo.
 ```bash
 docker compose exec tts python3 -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.get_arch_list(), torch.cuda.get_device_name(0))"
 ```
+
+## Tests ohne GPU
+
+```bash
+pip install -r requirements-dev.txt
+PYTHONPATH=. pytest
+```
+
+Die Tests erzeugen PCM lokal und prüfen, dass Ogg-Seiten ankommen, bevor der
+zweite Satz an den Encoder geht.
 
 ## Ollama
 
@@ -130,4 +218,4 @@ der langen Restliste, und die Gewichte sind Research-Lizenz (nicht kommerziell).
 ## Lizenz
 
 Modell und Code von Resemble: MIT. Dieser kleine Server ebenfalls nutzbar ohne
-Extra-Lizenz. Keine API-Keys.
+Extra-Lizenz. Keine API-Keys für das Modell.
