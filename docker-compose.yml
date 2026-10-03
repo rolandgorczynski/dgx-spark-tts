@@ -1,0 +1,50 @@
+# Chatterbox Multilingual V3 on DGX Spark.
+# Image tag spark-tts:chatterbox-mtl-v3 is produced by the local build.
+# It is not a Docker Hub tag.
+
+services:
+  tts:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: spark-tts:chatterbox-mtl-v3
+    platform: linux/arm64
+    ports:
+      - "${PORT:-8004}:8004"
+    environment:
+      PORT: "8004"
+      CHATTERBOX_T3_MODEL: ${CHATTERBOX_T3_MODEL:-v3}
+      TTS_LANGUAGE: ${TTS_LANGUAGE:-de}
+      TTS_CHUNK_CHARS: ${TTS_CHUNK_CHARS:-400}
+      HF_HOME: /models/huggingface
+      HF_HUB_DISABLE_XET: "1"
+      HF_TOKEN: ${HF_TOKEN:-}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    volumes:
+      - hf_cache:/models/huggingface
+      - ./voices:/voices:ro
+    shm_size: "8gb"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8004/health', timeout=5)",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 900s
+
+volumes:
+  hf_cache:

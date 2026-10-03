@@ -1,0 +1,45 @@
+# Secrets — .env.example is the committed template
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Model weights and Hugging Face caches
+hf_cache/
+.cache/
+models/
+**/huggingface/
+*.safetensors
+*.pt
+*.bin
+*.onnx
+
+# Local voice samples and generated audio
+voices/*
+!voices/.gitkeep
+outputs/
+*.wav
+*.mp3
+*.flac
+
+# Docker / local junk
+*.log
+.DS_Store
